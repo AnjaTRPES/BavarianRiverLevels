@@ -10,6 +10,18 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+
+def get_river_stats_url(url):
+    dfs=pd.read_html(url)
+    river_stats=dfs[0]
+    river_stats[river_stats.columns[0]]=pd.to_datetime(river_stats[river_stats.columns[0]],
+           format='%d.%m.%Y %H:%M')
+    river_stats['hours']=(river_stats[river_stats.columns[0]]-river_stats[river_stats.columns[0]][0])/np.timedelta64(1,'h')
+    river_stats=river_stats.rename(columns={river_stats.columns[0]:'datetime',
+                                          river_stats.columns[1]:'waterlevel'})
+    return river_stats
+    
+
 def get_river_stats(Region,Station, days):
     """
     Download the rivers water levels at a particular station over x days
@@ -23,12 +35,8 @@ def get_river_stats(Region,Station, days):
     """
     html='https://www.hnd.bayern.de/pegel/'+Region+'/'
     html+=Station+'/tabelle?methode=wasserstand&days='+str(days)
-    dfs=pd.read_html(html)
-    river_stats=dfs[0]
-    river_stats[river_stats.columns[0]]=pd.to_datetime(river_stats[river_stats.columns[0]],
-           format='%d.%m.%Y %H:%M')
-    river_stats['hours']=(river_stats[river_stats.columns[0]]-river_stats[river_stats.columns[0]][0])/np.timedelta64(1,'h')
-    return river_stats
+    return get_river_stats_url(html)
+
 
 
 if __name__=='__main__':
