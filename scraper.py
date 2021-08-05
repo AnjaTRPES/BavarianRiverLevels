@@ -8,6 +8,7 @@ Created on Sat Jul 31 15:58:57 2021
 
 import numpy as np
 import pandas as pd
+import urllib.error
 import matplotlib.pyplot as plt
 
 

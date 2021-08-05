@@ -14,6 +14,7 @@ from dash.dependencies import Input, Output
 import plotly.express as px
 from plotly.offline import plot
 import plotly.graph_objects as go
+import urllib.error
 import pandas as pd
 #get some data to play with
 
@@ -34,6 +35,8 @@ def make_categ_waterlevels(river_stats,at_least=90,low=100,medium=120,high=170):
 
 
 lcat=['too low','low','medium','high','too high']
+lcat_colors=['black','blue','green','orange','red']
+lcat_colors_dict=dict(zip(lcat,lcat_colors))
 
 river_stats=make_categ_waterlevels(river_stats,90,100,120,170)
 
@@ -74,6 +77,7 @@ def update_line_chart(river_level,jsonified_data):
     '''
     update the figure when the user changes which river levels to look at
     '''
+    '''
     river_stats=pd.read_json(jsonified_data, orient='split')
     print('want to show ',river_level, ' river level')
     fig = px.line(river_stats, x="datetime", y="waterlevel", 
@@ -82,6 +86,21 @@ def update_line_chart(river_level,jsonified_data):
     fig.add_trace(go.Scatter(x=river_stats[mask].datetime,
                          y=river_stats[mask].waterlevel,
                          mode='markers'))
+    '''
+    
+    fig = go.Figure()
+    # Full line
+    fig.add_scattergl(x=river_stats.datetime,
+                      y=river_stats.waterlevel, 
+                      line={'color': 'black'},
+                      name='Water level')
+
+    # Above threshhgold
+    for cat in river_level:
+        fig.add_scattergl(x=river_stats.datetime,
+                          y=river_stats.waterlevel.where(river_stats.level_cat==cat), 
+                          line={'color': lcat_colors_dict[cat]},
+                          name=cat)
     return fig
 
 
