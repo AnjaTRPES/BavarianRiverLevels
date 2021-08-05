@@ -16,29 +16,27 @@ from plotly.offline import plot
 import plotly.graph_objects as go
 import urllib.error
 import pandas as pd
-#get some data to play with
+import pickle
 
-river_stats=get_river_stats('isar','garmisch-o-d-partnachmuendung-16401006',365)
-#Note: that site gives me 13 months of data.
-#use plotly to plot the data and color it according to the enjoyment level
-# of kayaking = too low water, just enough, perfect, high, too high
-# have another one where you analyze according to the day of the weeks or weekends or
-# according to the months=get statistics how many paddelable days there were.
 
-#make a new column with categorical labels too low, low, perfect, high, too high
-def make_categ_waterlevels(river_stats,at_least=90,low=100,medium=120,high=170):
-    river_stats['level_cat']=pd.cut(river_stats.waterlevel,
-               bins=[0,at_least,low,medium,high,high*10000],include_lowest=True,
-               right=True,
-               labels=['too low','low','medium','high','too high'])
-    return river_stats
+#get the dictionairy
+with open('river_stats.json', 'rb') as fp:
+    river_stats_dict= pickle.load(fp)
+
+#get the river stats of the Loisach
+river_stats=get_river_stats_url_days(river_stats_dict['Loisach']["url"],365)
 
 
 lcat=['too low','low','medium','high','too high']
 lcat_colors=['black','blue','green','orange','red']
 lcat_colors_dict=dict(zip(lcat,lcat_colors))
 
-river_stats=make_categ_waterlevels(river_stats,90,100,120,170)
+river_stats=make_categ_waterlevels(river_stats,
+                                   river_stats_dict['Loisach']["levels"]["at_least"],
+                                   river_stats_dict['Loisach']["levels"]["low"],
+                                   river_stats_dict['Loisach']["levels"]["medium"],
+                                   river_stats_dict['Loisach']["levels"]["high"]
+                                   )
 
 '''
 fig = px.line(river_stats, x="datetime", y="waterlevel", title='Waterlevel evolution')
@@ -52,11 +50,55 @@ app=dash.Dash(__name__)
 
 app.layout=html.Div(#[
         children=[html.H1(children='River Level Stats'),
-        dcc.Input(
-            id="input_url",
-            type="url",
-            placeholder="https://www.hnd.bayern.de/pegel/isar/garmisch-o-d-partnachmuendung-16401006/tabelle?methode=wasserstand&days=50"
-            ),
+                  dcc.Markdown('The easy way to decide whether a river has good levels for kayaking!'),
+                  html.Div([
+                  dcc.Dropdown(                                                 
+                          id='which_river',
+                          options=[dict([(i, key) for i in ['label','value']]) for key in list(river_stats_dict.keys())],
+                          value=list(river_stats_dict.keys())[0],
+                          style={'float':"left",'margin':'auto'}
+                        ),
+                  dcc.Input(
+                          id='number_days',
+                          type='number',
+                          placeholder=364,
+                          value=364,
+                          style={'float':"left",'margin':'auto'})
+                  ]),
+                  dcc.Checklist(
+                          id='Show_hidden',
+                          options=[{'label':'custom values','value':'Show'}],
+                          labelStyle={'display': 'inline-block'}),
+                  #Create a div where the user can put in a html to load, and custom set the levels
+                  html.Div([
+                          html.P('url'),
+                          dcc.Input(
+                                id="input_url",
+                                type="url",
+                                value=river_stats_dict['Loisach']["url"],
+                                ),
+                         html.P('at_least'),
+                         dcc.Input(
+                                 id='at_least',
+                                 type='number',
+                                 value=river_stats_dict['Loisach']["levels"]["at_least"]),
+                         html.P('low'),
+                         dcc.Input(
+                                 id='low',
+                                 type='number',
+                                 value=river_stats_dict['Loisach']["levels"]["low"]),
+                        html.P('medium'),
+                         dcc.Input(
+                                 id='medium',
+                                 type='number',
+                                 value=river_stats_dict['Loisach']["levels"]["medium"]),
+                        html.P('at_least'),
+                         dcc.Input(
+                                 id='high',
+                                 type='number',
+                                 value=river_stats_dict['Loisach']["levels"]["high"])
+                        
+                          ], id='show_custom', style={'display':'none'}),        
         dcc.Checklist(
                 id="checklist",
                 options=[{'label':x,'value':x}
@@ -70,6 +112,18 @@ app.layout=html.Div(#[
         ])
 
 @app.callback(
+        Output(component_id='show_custom',component_property='style'),
+        [Input('Show_hidden',component_property='value')])
+def show_custom_elements(visibility):
+    try:
+        if 'Show' in visibility:
+            return {'display':'block'}
+        else:
+            return {'display':'none'}
+    except TypeError:
+        return {'display':'none'}
+
+@app.callback(
         Output('line-chart','figure'),
         [Input('checklist','value'),
          Input('intermediate-value','data')])
@@ -77,17 +131,9 @@ def update_line_chart(river_level,jsonified_data):
     '''
     update the figure when the user changes which river levels to look at
     '''
-    '''
     river_stats=pd.read_json(jsonified_data, orient='split')
-    print('want to show ',river_level, ' river level')
-    fig = px.line(river_stats, x="datetime", y="waterlevel", 
-                  title='Waterlevel evolution')
-    mask =river_stats.level_cat.isin(river_level)
-    fig.add_trace(go.Scatter(x=river_stats[mask].datetime,
-                         y=river_stats[mask].waterlevel,
-                         mode='markers'))
-    '''
-    
+
+    print('updating figure',river_level)
     fig = go.Figure()
     # Full line
     fig.add_scattergl(x=river_stats.datetime,
@@ -106,21 +152,37 @@ def update_line_chart(river_level,jsonified_data):
 
 @app.callback(
         Output('intermediate-value', 'data'),
-        [Input('input_url','value')])
-def update_placeholder(url):
+        Output('input_url','value'),
+        Output('at_least','value'),
+        Output('low','value'),
+        Output('medium','value'),
+        Output('high','value'),
+        [Input('which_river','value'),
+         Input('number_days','value')])
+def update_placeholder(river,days):
     '''
     load new data!
     '''
+    print(river,days)
     #try to load the url two times
     try:
-        river_st=get_river_stats_url(url)
+        river_st=get_river_stats_url_days(river_stats_dict[river]["url"],days)
     except URLError:
         try:
-            river_st=get_river_stats_url(url)
+            river_st=get_river_stats_url_days(river_stats_dict[river]["url"],days)
         except URLError:
             print("wrong url...")
-    river_st=make_categ_waterlevels(river_st)
-    return river_st.to_json(date_format='iso', orient='split')
+    river_st=make_categ_waterlevels(river_st,
+                                    river_stats_dict[river]["levels"]["at_least"],
+                                    river_stats_dict[river]["levels"]["low"],
+                                    river_stats_dict[river]["levels"]["medium"],
+                                    river_stats_dict[river]["levels"]["high"])
+    print('okay,now returning it',
+          river_stats_dict[river]["levels"]["at_least"],
+          river_stats_dict[river]["levels"]["low"],
+          river_stats_dict[river]["levels"]["medium"],
+          river_stats_dict[river]["levels"]["high"])
+    return river_st.to_json(date_format='iso', orient='split'),river_stats_dict[river]["url"]+str(days),river_stats_dict[river]["levels"]["at_least"],river_stats_dict[river]["levels"]["low"], river_stats_dict[river]["levels"]["medium"],river_stats_dict[river]["levels"]["high"]
     
 
 app.run_server(debug=True)

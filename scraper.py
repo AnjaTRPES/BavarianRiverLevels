@@ -21,6 +21,16 @@ def get_river_stats_url(url):
     river_stats=river_stats.rename(columns={river_stats.columns[0]:'datetime',
                                           river_stats.columns[1]:'waterlevel'})
     return river_stats
+
+def get_river_stats_url_days(url,days):
+    dfs=pd.read_html(url+str(days))
+    river_stats=dfs[0]
+    river_stats[river_stats.columns[0]]=pd.to_datetime(river_stats[river_stats.columns[0]],
+           format='%d.%m.%Y %H:%M')
+    river_stats['hours']=(river_stats[river_stats.columns[0]]-river_stats[river_stats.columns[0]][0])/np.timedelta64(1,'h')
+    river_stats=river_stats.rename(columns={river_stats.columns[0]:'datetime',
+                                          river_stats.columns[1]:'waterlevel'})
+    return river_stats
     
 
 def get_river_stats(Region,Station, days):
@@ -38,7 +48,12 @@ def get_river_stats(Region,Station, days):
     html+=Station+'/tabelle?methode=wasserstand&days='+str(days)
     return get_river_stats_url(html)
 
-
+def make_categ_waterlevels(river_stats,at_least=90,low=100,medium=120,high=170):
+    river_stats['level_cat']=pd.cut(river_stats.waterlevel,
+               bins=[0,at_least,low,medium,high,high*10000],include_lowest=True,
+               right=True,
+               labels=['too low','low','medium','high','too high'])
+    return river_stats
 
 if __name__=='__main__':
     river_stats=get_river_stats('isar','garmisch-o-d-partnachmuendung-16401006',360)
