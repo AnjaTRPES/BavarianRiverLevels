@@ -53,6 +53,9 @@ def make_categ_waterlevels(river_stats,at_least=90,low=100,medium=120,high=170):
                bins=[0,at_least,low,medium,high,high*10000],include_lowest=True,
                right=True,
                labels=['too low','low','medium','high','too high'])
+    #add the days of the week
+    river_stats['weekdays']=river_stats.datetime.dt.day_name()
+    river_stats['day_hour']=river_stats.datetime.dt.hour
     return river_stats
 
 if __name__=='__main__':
